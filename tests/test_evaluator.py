@@ -48,10 +48,10 @@ def test_aho_corasick_correctness():
     
     ac = AhoCorasickAutomaton()
     keywords = [
-        ("炸弹", "涉枪涉爆"),
-        ("炸药", "涉枪涉爆"),
-        ("制作方法", "暴恐词库"),
-        ("手枪", "涉枪涉爆"),
+        ("炸弹", "违法犯罪行为"),
+        ("炸药", "违法犯罪行为"),
+        ("制作方法", "违法犯罪行为"),
+        ("手枪", "违法犯罪行为"),
     ]
     for kw, cat in keywords:
         ac.add_keyword(kw, cat)

@@ -202,7 +202,6 @@ def test_keyword_checker():
         log_print(f"   是否匹配: {result.matched}")
         if result.matched:
             log_print(f"   匹配关键词: {result.matched_keywords}")
-            log_print(f"   严重程度: {result.severity}")
     
     return True
 

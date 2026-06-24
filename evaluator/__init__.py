@@ -22,6 +22,11 @@ from evaluator.reporter import (
     ReportGenerator,
     get_report_generator
 )
+from evaluator.jailbench_loader import (
+    JailBenchQuery,
+    JailBenchLoader,
+    get_jailbench_loader
+)
 
 
 __all__ = [
@@ -43,4 +48,9 @@ __all__ = [
     # 报告生成相关
     "ReportGenerator",
     "get_report_generator",
+    
+    # JailBench词库相关
+    "JailBenchQuery",
+    "JailBenchLoader",
+    "get_jailbench_loader",
 ]

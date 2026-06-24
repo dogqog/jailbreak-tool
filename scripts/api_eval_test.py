@@ -417,7 +417,6 @@ async def main():
                 
                 f.write(f"### {icon} [{sname}] {t.id} - {t.name}（多轮交互）\n\n")
                 f.write(f"- **描述**: {t.description}\n")
-                f.write(f"- **允许词库**: {t.allowed_categories if hasattr(t,'allowed_categories') and t.allowed_categories else '全部'}\n")
                 f.write(f"- **轮次数**: {len(r.get('rounds', []))}\n")
                 f.write(f"- **关键轮起始**: 第{critical_start+1}轮\n")
                 f.write(f"- **最终判定**: {verdict}\n\n")
@@ -462,7 +461,6 @@ async def main():
                 
                 f.write(f"### {icon} [{sname}] {t.id} - {t.name}\n\n")
                 f.write(f"- **描述**: {t.description}\n")
-                f.write(f"- **允许词库**: {t.allowed_categories if hasattr(t,'allowed_categories') and t.allowed_categories else '全部'}\n")
                 f.write(f"- **评估结果**: {verdict}\n\n")
                 f.write("**发送提示词**:\n\n```\n" + text + "\n```\n\n")
                 f.write("**API完整回复**:\n\n")

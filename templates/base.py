@@ -23,10 +23,6 @@ class JailbreakTemplate:
     """
     越狱模板数据类
     
-    allowed_categories: 允许的敏感词库类别列表
-        - None 表示允许所有词库
-        - 列表中的值: "涉枪涉爆", "暴恐词库", "色情类型"
-    
     Attributes:
         id: 模板唯一标识
         strategy: 所属策略类型
@@ -34,7 +30,6 @@ class JailbreakTemplate:
         description: 模板描述
         template: 模板内容（包含占位符）
         placeholders: 占位符说明
-        allowed_categories: 允许的敏感词库类别（None=全部允许）
     """
     id: str
     strategy: JailbreakStrategy
@@ -42,7 +37,6 @@ class JailbreakTemplate:
     description: str
     template: str
     placeholders: Dict[str, str]
-    allowed_categories: Optional[List[str]] = None
     
     def render(self, **kwargs) -> str:
         """

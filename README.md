@@ -84,7 +84,6 @@ JailbreakTemplate(
     strategy=JailbreakStrategy.ROLE_PLAY,  # 所属策略
     name="模板名称",                 # 可读名称
     description="模板描述",          # 描述
-    allowed_categories=["涉枪涉爆"], # 适用词库类别
     template="""你好，{instruction}""",  # 模板字符串
     placeholders={"instruction": "描述"}  # 占位符说明
 )

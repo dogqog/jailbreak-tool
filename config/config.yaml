@@ -53,9 +53,7 @@ evaluation:
     enabled: true
     # 敏感词库路径
     lexicon_paths:
-      - "/Vocabulary/暴恐词库.txt"
-      - "/Vocabulary/涉枪涉爆.txt"
-      - "/Vocabulary/色情类型.txt"
+      - "/Vocabulary/jailbench_seed.csv"
   
   # 语义分析配置
   semantic_analysis:
