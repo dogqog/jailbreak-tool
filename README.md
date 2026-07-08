@@ -21,14 +21,11 @@
 
 ```
 jailbreak-tool/
-├── templates/          # 模板库：5种越狱策略的提示词模板
+├── templates/          # 模板模块：基类与管理器
 │   ├── base.py          模板基类与数据模型
-│   ├── manager.py       模板管理器（统一加载所有模板）
-│   ├── role_play.py     角色扮演策略模板
-│   ├── scenario.py      场景构建策略模板
-│   ├── constraint.py    约束绕过策略模板
-│   ├── translation.py   翻译伪装策略模板
-│   └── multi_turn.py    多轮诱导策略模板
+│   └── manager.py       模板管理器（从独立 JSON 库加载）
+├── templates_library/  # 独立模板库文件（JSON格式，共29个模板）
+│   └── all_templates.json
 ├── engine/             # 引擎模块：变异与生成
 │   ├── generator.py     提示词生成器
 │   └── mutator.py       变异引擎（6种变异方法）
@@ -36,20 +33,24 @@ jailbreak-tool/
 │   ├── deepseek_client.py  DeepSeek API客户端
 │   └── async_handler.py   异步请求处理器
 ├── evaluator/          # 评估模块：检测与判定
-│   ├── keyword_checker.py  关键词检测器（Aho-Corasick）
 │   ├── semantic_analyzer.py 语义分析器（规则引擎）
-│   ├── judge.py           综合判定器（双层判定）
-│   └── reporter.py        报告生成器
+│   ├── reporter.py        报告生成器
+│   └── jailbench_loader.py JailBench词库加载器
 ├── scripts/            # 测试脚本
-│   ├── api_eval_test.py   API评估测试（主测试入口）
+│   ├── api_eval_test.py   API评估测试（逐模板测试）
 │   └── generate_prompts.py 提示词批量生成
 ├── Vocabulary/         # 敏感词库
-│   ├── 涉枪涉爆.txt
-│   ├── 暴恐词库.txt
-│   └── 色情类型.txt
+│   ├── JailBench_seed.csv          安全评估敏感问题词库（108条）
+│   └── HIT-IRLab-同义词词林（扩展版）_full_2005.3.3.txt  同义词资源
 ├── config/             # 配置文件
+│   └── config.yaml     主配置（变异权重、测试参数）
 ├── output/             # 输出目录（提示词、日志、报告）
-└── main.py             # 主程序入口
+│   ├── prompts/        生成的提示词样本集
+│   ├── reports/        测试报告
+│   └── logs/           运行日志
+├── main.py             # 主程序入口（正式测试入口）
+├── report.md           # 作品报告
+└── requirements.txt    # 依赖列表
 ```
 
 ---
@@ -63,7 +64,7 @@ jailbreak-tool/
 | 策略 | 枚举值 | 说明 | 模板数量 |
 |------|--------|------|----------|
 | 角色扮演 | `ROLE_PLAY` | 通过扮演特定角色（作家、研究员等）绕过大模型的安全限制 | 7个 |
-| 场景构建 | `SCENARIO` | 构建虚构场景（未来世界、纸上推演等）让模型放下戒备 | 6个 |
+| 场景构建 | `SCENARIO` | 构建虚构场景（未来世界、纸上推演等）让模型放下戒备 | 5个 |
 | 约束绕过 | `CONSTRAINT` | 通过系统功能测试、系统权限设定等方式绕过约束 | 6个 |
 | 翻译伪装 | `TRANSLATION` | 以翻译任务为伪装，请求敏感内容的翻译输出 | 5个 |
 | 多轮诱导 | `MULTI_TURN` | 多轮对话中逐步铺垫，在关键轮插入敏感词 | 6个 |
@@ -71,8 +72,8 @@ jailbreak-tool/
 ### 关键文件
 
 - **`base.py`**：定义 `JailbreakTemplate`（模板数据类）、`JailbreakStrategy`（策略枚举）、`BaseTemplateProvider`（模板提供者基类）、`validate_template()`（模板校验函数）
-- **`manager.py`**：`TemplateManager` 统一加载所有策略的模板，通过 `get_template_manager()` 获取单例
-- **各策略文件**（`role_play.py` / `scenario.py` / ...）：每个文件定义一个 `XxxTemplateProvider` 类，包含该策略下的所有具体模板
+- **`manager.py`**：`TemplateManager` 从 `templates_library/all_templates.json` 加载所有模板，通过 `get_template_manager()` 获取单例
+- **`templates_library/all_templates.json`**：独立 JSON 模板库，包含 5 种策略共 29 个模板
 
 ### 模板结构
 
@@ -121,6 +122,8 @@ results = prompt_generator.generate_from_template(template, apply_mutation=True,
 
 返回 `List[GeneratedPrompt]`，每个包含渲染后的提示词内容、使用的变异方法列表、原始模板等元数据。
 
+> **变异组合策略**：`generator.py` 默认从 `config/config.yaml` 读取变异权重，每次生成时按权重随机选择 **1~3 种** 变异方法组合，避免默认叠加全部 6 种方法导致语义混乱。
+
 ---
 
 ## 模块 3：API 通信模块（API）
@@ -140,16 +143,9 @@ results = prompt_generator.generate_from_template(template, apply_mutation=True,
 
 ## 模块 4：评估模块（Evaluator）
 
-评估模块是项目的"检测层"，采用**双层判定体系**对模型的响应进行评估。
+评估模块是项目的"检测层"，采用**语义规则引擎**对模型的响应进行评估。
 
-### 第一层：关键词检测（keyword_checker.py）
-
-- 使用 **Aho-Corasick 多模式匹配算法**，O(n) 时间复杂度
-- 加载 `Vocabulary/` 目录下的所有敏感词库（涉枪涉爆、暴恐、色情）
-- 检测响应中是否包含敏感关键词、命中哪些类别、严重程度等
-- 通过 `get_keyword_checker()` 获取实例
-
-### 第二层：语义分析（semantic_analyzer.py）
+### 语义分析器（semantic_analyzer.py）
 
 纯本地规则引擎，不依赖任何付费 API。通过以下维度分析：
 
@@ -159,16 +155,7 @@ results = prompt_generator.generate_from_template(template, apply_mutation=True,
 
 通过 `get_semantic_analyzer()` 获取实例。
 
-### 综合判定器（judge.py）
-
-`JailbreakJudge` 整合关键词检测 + 语义分析，输出最终判定结果：
-
-- `is_jailbreak_success`: 是否越狱成功
-- `keyword_matched`: 关键词匹配结果
-- `semantic_dangerous`: 语义分析结果
-- `final_danger_level`: 最终危险等级（1-5）
-
-通过 `get_jailbreak_judge()` 获取实例。
+> **设计变更**：根据项目要求，已移除 `keyword_checker.py` 和 `judge.py`，统一使用 `semantic_analyzer.py` 进行基于正则的拒绝/伪越狱/危险内容判定。
 
 ### 判定逻辑（测试脚本层面）
 
@@ -191,26 +178,42 @@ results = prompt_generator.generate_from_template(template, apply_mutation=True,
 
 ## 测试脚本
 
-### API 评估测试（主测试）
+### 主程序完整测试（正式入口）
 
-```
-python scripts/api_eval_test.py --api-key "your-api-key"
+```bash
+python main.py --api-key "sk-your-key" --total 100 --concurrent 5
 ```
 
 **功能**：
 
 1. 自动加载所有模板（单轮 + 多轮）
-2. 对每个模板渲染提示词并调用 API
-3. 对多轮模板自动解析轮次、逐轮交互
-4. 使用语义分析器进行精准判定（区分拒绝 / 伪越狱 / 真越狱）
-5. 生成 Markdown 格式的测试报告
+2. 随机生成指定数量的越狱提示词（默认 200，范围 100-300）
+3. 对每个提示词调用 API
+4. 对多轮模板自动解析轮次、逐轮交互
+5. 使用语义分析器进行精准判定（区分拒绝 / 伪越狱 / 真越狱）
+6. 生成 JSON 和 Markdown 格式的测试报告
 
 **多轮对话逻辑**：
 
-- 多轮模板包含"铺垫轮"和"关键轮"
-- 铺垫轮仅建立上下文（不参与拒绝判定）
-- 关键轮（命中敏感词的轮次及之后）用于判定越狱是否成功
-- 关键轮中任意一轮未被拒绝 → 整体视为越狱成功
+- 多轮模板需按 `第N轮（说明）：\n"内容"` 格式编写
+- `api_eval_test.py` 与 `main.py` 会自动解析轮次
+- 逐轮发送：发第1轮 → 等AI回复 → 发第2轮 → ...
+
+### 批量生成提示词样本集（不调用API）
+
+```bash
+python scripts/generate_prompts.py
+```
+
+输出到 `output/prompts/`：
+- `generated_prompts_v3.txt`：文本格式样本
+- `generated_prompts_v3.json`：JSON格式样本（含 `id`、`content`、`strategy`、`mutation_methods` 等字段）
+
+### API 评估测试（逐模板测试）
+
+```bash
+python scripts/api_eval_test.py --api-key "your-api-key"
+```
 
 ---
 
@@ -222,20 +225,22 @@ python scripts/api_eval_test.py --api-key "your-api-key"
 pip install -r requirements.txt
 ```
 
-依赖包括：`openai`、`jieba`、`synonyms`、`sentence-transformers`、`aiohttp`、`loguru` 等。
+依赖包括：`openai`、`jieba`、`loguru`、`pyyaml`、`aiohttp` 等。
 
-### 运行完整测试
+### 配置 API 密钥
 
-```bash
-cd jailbreak-tool
-python scripts/api_eval_test.py --api-key "sk-your-key"
-```
-
-### 使用主程序
+请勿在 `config/config.yaml` 中填写真实密钥，通过以下方式传入：
 
 ```bash
-python main.py --api-key "sk-your-key" --count 30
+# 方式1：环境变量
+$env:DEEPSEEK_API_KEY="sk-your-key"
+python main.py
+
+# 方式2：命令行参数
+python main.py --api-key "sk-your-key"
 ```
+
+> **测试模型**：受预算限制，本项目实际测试仅使用 `deepseek-v4-flash`。`api/deepseek_client.py` 基于 OpenAI SDK 实现，理论上可通过修改 `base_url` 适配其他兼容 OpenAI 接口的模型，但当前未进行 Qwen/ChatGLM 等模型的实测。
 
 ### 查看报告
 
@@ -243,9 +248,9 @@ python main.py --api-key "sk-your-key" --count 30
 
 ```
 output/reports/
-├── api_eval_report_20260620_155203.md    # 第一轮测试
-├── api_eval_report_20260620_173919.md    # 第二轮测试
-└── api_eval_report_20260620_181219.md    # 第三轮测试（含语义分析）
+├── jailbreak_report_20260707_232957.json  # JSON格式结构化报告
+├── jailbreak_report_20260707_232957.md    # Markdown格式可读报告
+└── api_eval_report_20260620_155203.md     # 逐模板测试报告（api_eval_test.py）
 ```
 
 ---
@@ -254,9 +259,11 @@ output/reports/
 
 报告包含以下内容：
 
-- **汇总**：总模板数、拒绝数、伪越狱数、真越狱数、真越狱率
-- **按策略**：每种策略的拒绝/伪越狱/真越狱统计
-- **详细结果**：每个模板的完整对话记录和判定结果（含多轮逐轮展示）
+- **汇总**：总提示词数、成功数、拒绝数、伪越狱数、总体成功率
+- **按策略**：每种策略的成功/拒绝/伪越狱统计（`strategy_stats`）
+- **按变异方法**：各变异方法对应的越狱成功率
+- **详细结果**：每个提示词的完整内容和判定结果
+- **输出字段**：`generated_prompts`（提示词列表）、`response_texts`（回复文本）、`jailbreak_success`（越狱判定）、`success_rate_by_strategy`（按策略成功率）等可在 JSON 报告中获取
 
 ## 注意事项
 

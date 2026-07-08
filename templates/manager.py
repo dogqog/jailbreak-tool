@@ -2,21 +2,18 @@
 越狱模板管理器
 
 统一管理所有越狱策略模板，提供便捷的访问接口。
+模板仅从独立 JSON 模板库文件加载，实现模板与代码分离。
 """
+import os
+import json
 from typing import List, Dict, Optional
 from loguru import logger
 
 from templates.base import (
-    JailbreakTemplate, 
-    JailbreakStrategy, 
-    BaseTemplateProvider,
+    JailbreakTemplate,
+    JailbreakStrategy,
     validate_template
 )
-from templates.role_play import RolePlayTemplateProvider
-from templates.scenario import ScenarioTemplateProvider
-from templates.constraint import ConstraintTemplateProvider
-from templates.translation import TranslationTemplateProvider
-from templates.multi_turn import MultiTurnTemplateProvider
 
 
 class TemplateManager:
@@ -26,39 +23,103 @@ class TemplateManager:
     负责加载、管理和提供所有越狱策略模板。
     """
     
-    def __init__(self):
+    def __init__(self, library_dir: Optional[str] = None):
         """
         初始化模板管理器
         
-        自动加载所有策略的模板提供者。
+        Args:
+            library_dir: 独立模板库目录（JSON文件），如果存在则优先加载
         """
-        # 初始化所有策略的模板提供者
-        self.providers: Dict[JailbreakStrategy, BaseTemplateProvider] = {
-            JailbreakStrategy.ROLE_PLAY: RolePlayTemplateProvider(),
-            JailbreakStrategy.SCENARIO: ScenarioTemplateProvider(),
-            JailbreakStrategy.CONSTRAINT: ConstraintTemplateProvider(),
-            JailbreakStrategy.TRANSLATION: TranslationTemplateProvider(),
-            JailbreakStrategy.MULTI_TURN: MultiTurnTemplateProvider(),
-        }
-        
         # 加载所有模板
         self.templates: Dict[str, JailbreakTemplate] = {}
-        self._load_all_templates()
-        
+
+        # 从独立模板库文件加载
+        if library_dir is None:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            library_dir = os.path.join(project_root, "templates_library")
+
+        if os.path.isdir(library_dir):
+            loaded = self._load_from_library(library_dir)
+            if loaded > 0:
+                logger.info(f"模板管理器从 {library_dir} 加载 {loaded} 个模板")
+
+        if not self.templates:
+            logger.error(f"未能从 {library_dir} 加载任何有效模板，请检查 JSON 模板库文件")
+
         logger.info(f"模板管理器初始化完成，共加载 {len(self.templates)} 个模板")
     
-    def _load_all_templates(self):
+    def _load_from_library(self, library_dir: str) -> int:
         """
-        加载所有策略的模板到内存
+        从独立模板库 JSON 文件加载模板
+        
+        加载 all_templates.json；分策略 json 文件已合并至该汇总文件。
+        
+        Args:
+            library_dir: 模板库目录
+            
+        Returns:
+            int: 成功加载的模板数量
         """
-        for strategy, provider in self.providers.items():
-            templates = provider.get_templates()
-            for template in templates:
-                if validate_template(template):
-                    self.templates[template.id] = template
-                    logger.debug(f"加载模板: {template.id} - {template.name}")
+        count = 0
+        
+        # 优先加载汇总文件，避免重复
+        all_file = os.path.join(library_dir, "all_templates.json")
+        if os.path.isfile(all_file):
+            files_to_load = [all_file]
+        else:
+            files_to_load = [
+                os.path.join(library_dir, f)
+                for f in sorted(os.listdir(library_dir))
+                if f.endswith(".json")
+            ]
+        
+        for filepath in files_to_load:
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # 支持两种格式：对象列表 或 包含 templates 字段的对象
+                if isinstance(data, dict):
+                    template_list = data.get("templates", [])
+                elif isinstance(data, list):
+                    template_list = data
                 else:
-                    logger.warning(f"模板验证失败，跳过: {template.id}")
+                    continue
+                
+                for item in template_list:
+                    template = self._dict_to_template(item)
+                    if template and validate_template(template):
+                        self.templates[template.id] = template
+                        count += 1
+            except Exception as e:
+                logger.warning(f"加载模板库文件失败 {filepath}: {e}")
+        
+        return count
+    
+    def _dict_to_template(self, data: Dict) -> Optional[JailbreakTemplate]:
+        """
+        将字典转换为 JailbreakTemplate 对象
+        
+        Args:
+            data: 模板字典
+            
+        Returns:
+            Optional[JailbreakTemplate]: 模板对象
+        """
+        try:
+            strategy_value = data.get("strategy")
+            strategy = JailbreakStrategy(strategy_value)
+            return JailbreakTemplate(
+                id=data["id"],
+                strategy=strategy,
+                name=data.get("name", ""),
+                description=data.get("description", ""),
+                template=data["template"],
+                placeholders=data.get("placeholders", {})
+            )
+        except Exception as e:
+            logger.warning(f"解析模板字典失败: {e}")
+            return None
     
     def get_all_templates(self) -> List[JailbreakTemplate]:
         """
@@ -156,7 +217,7 @@ class TemplateManager:
         return [t.to_dict() for t in self.templates.values()]
 
 
-# 创建全局模板管理器实例
+# 创建全局模板管理器实例（默认从 templates_library/ 加载）
 template_manager = TemplateManager()
 
 

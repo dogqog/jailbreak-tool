@@ -3,6 +3,9 @@
 """
 import sys
 import os
+import json
+from datetime import datetime
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from templates import get_template_manager, JailbreakStrategy
@@ -13,6 +16,7 @@ from loguru import logger
 logger.remove()
 logger.add(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", "logs", "generate.log"), level="INFO", encoding="utf-8")
 
+
 def main():
     output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", "prompts")
     os.makedirs(output_dir, exist_ok=True)
@@ -20,12 +24,17 @@ def main():
 
     generator = get_prompt_generator()
 
-    # 每个策略生成20条，共100条
+    # 生成100条提示词
     prompts = generator.generate_batch(total_count=100)
+
+    # 同时导出为 JSON 格式（题目要求字段）
+    output_json = os.path.join(output_dir, "generated_prompts_v3.json")
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump([p.to_dict() for p in prompts], f, ensure_ascii=False, indent=2)
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(f"# 越狱测试提示词 - 共 {len(prompts)} 条\n")
-        f.write(f"# 生成时间: 2026-06-19\n")
+        f.write(f"# 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 70 + "\n\n")
         for i, p in enumerate(prompts, 1):
             f.write(f"[{i:03d}] ID: {p.id}\n")
@@ -42,10 +51,12 @@ def main():
         stats[s] = stats.get(s, 0) + 1
 
     print(f"生成完成: {len(prompts)} 条提示词")
-    print(f"输出文件: {output_file}")
+    print(f"文本输出: {output_file}")
+    print(f"JSON输出: {output_json}")
     print("策略分布:")
     for s, c in stats.items():
         print(f"  - {s}: {c} 条")
+
 
 if __name__ == "__main__":
     main()

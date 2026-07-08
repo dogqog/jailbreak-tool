@@ -3,7 +3,9 @@
 
 结合模板库和变异引擎，批量生成越狱提示词。
 """
+import os
 import random
+import yaml
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from loguru import logger
@@ -20,6 +22,17 @@ from engine.mutator import (
     MutationMethod,
     MutationResult
 )
+
+
+# 变异方法到配置权重的映射
+_MUTATION_WEIGHT_MAP = {
+    "synonym_replace": MutationMethod.SYNONYM_REPLACE,
+    "sentence_restructure": MutationMethod.SENTENCE_RESTRUCTURE,
+    "multilingual_mix": MutationMethod.MULTILINGUAL_MIX,
+    "symbol_insert": MutationMethod.SYMBOL_INSERT,
+    "encoding_bypass": MutationMethod.ENCODING_BYPASS,
+    "output_constraint": MutationMethod.OUTPUT_CONSTRAINT,
+}
 
 
 @dataclass
@@ -67,7 +80,8 @@ class PromptGenerator:
     def __init__(
         self,
         template_manager: Optional[TemplateManager] = None,
-        mutation_engine: Optional[MutationEngine] = None
+        mutation_engine: Optional[MutationEngine] = None,
+        config_path: Optional[str] = None
     ):
         """
         初始化提示词生成器
@@ -75,6 +89,7 @@ class PromptGenerator:
         Args:
             template_manager: 模板管理器（可选，默认使用全局实例）
             mutation_engine: 变异引擎（可选，默认使用全局实例）
+            config_path: 生成配置文件路径（可选，默认读取 config/config.yaml）
         """
         self.template_manager = template_manager or get_template_manager()
         self.mutation_engine = mutation_engine or get_mutation_engine()
@@ -82,13 +97,127 @@ class PromptGenerator:
         # 生成计数器
         self.generation_counter = 0
         
-        logger.info("提示词生成器初始化完成")
+        # 加载配置
+        self.config = self._load_config(config_path)
+        self.mutation_enabled = self.config.get("enabled", True)
+        self.mutations_per_template = self.config.get("mutations_per_template", 5)
+        self.mutation_weights = self._build_mutation_weights(
+            self.config.get("weights", {})
+        )
+        self.max_combo_size = self.config.get("max_combo_size", 3)
+        self.min_combo_size = self.config.get("min_combo_size", 1)
+        
+        logger.info(
+            f"提示词生成器初始化完成 - 变异启用:{self.mutation_enabled}, "
+            f"权重方法数:{len(self.mutation_weights)}"
+        )
+    
+    def _load_config(self, config_path: Optional[str]) -> Dict:
+        """
+        读取生成/变异配置
+        
+        Args:
+            config_path: 配置文件路径
+            
+        Returns:
+            Dict: 变异配置字典
+        """
+        default_config = {
+            "enabled": True,
+            "mutations_per_template": 5,
+            "max_combo_size": 3,
+            "min_combo_size": 1,
+            "weights": {
+                "synonym_replace": 0.25,
+                "sentence_restructure": 0.20,
+                "multilingual_mix": 0.15,
+                "symbol_insert": 0.15,
+                "encoding_bypass": 0.15,
+                "output_constraint": 0.10,
+            }
+        }
+        
+        if config_path is None:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_path = os.path.join(project_root, "config", "config.yaml")
+        
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                full_config = yaml.safe_load(f) or {}
+            mutation_config = full_config.get("generation", {}).get("mutation", {})
+            # 合并默认配置
+            merged = {**default_config, **mutation_config}
+            return merged
+        except Exception as e:
+            logger.warning(f"读取变异配置失败，使用默认配置: {e}")
+            return default_config
+    
+    def _build_mutation_weights(self, weights: Dict[str, float]) -> Dict[MutationMethod, float]:
+        """
+        将配置中的权重字符串映射为 MutationMethod 枚举权重
+        
+        Args:
+            weights: 配置权重字典
+            
+        Returns:
+            Dict[MutationMethod, float]: 方法到权重的映射
+        """
+        result = {}
+        for key, weight in weights.items():
+            method = _MUTATION_WEIGHT_MAP.get(key)
+            if method and weight > 0:
+                result[method] = weight
+        
+        if not result:
+            # 如果全部无效，使用均匀权重
+            for method in MutationMethod:
+                result[method] = 1.0 / len(MutationMethod)
+        
+        return result
+    
+    def _select_mutation_methods(self, count: int = 1) -> List[MutationMethod]:
+        """
+        根据权重随机选择一组变异方法
+        
+        Args:
+            count: 期望选择的方法数量（实际会在 min/max combo 范围内随机）
+            
+        Returns:
+            List[MutationMethod]: 选中的变异方法列表
+        """
+        if not self.mutation_enabled or not self.mutation_weights:
+            return []
+        
+        methods = list(self.mutation_weights.keys())
+        weights = [self.mutation_weights[m] for m in methods]
+        
+        # 随机决定组合大小，避免默认叠加全部方法
+        combo_size = random.randint(self.min_combo_size, min(self.max_combo_size, len(methods)))
+        
+        # 按权重无放回抽样
+        selected = []
+        remaining_methods = methods.copy()
+        remaining_weights = weights.copy()
+        
+        for _ in range(combo_size):
+            if not remaining_methods:
+                break
+            total = sum(remaining_weights)
+            if total <= 0:
+                break
+            pick = random.choices(remaining_methods, weights=remaining_weights, k=1)[0]
+            idx = remaining_methods.index(pick)
+            selected.append(pick)
+            remaining_methods.pop(idx)
+            remaining_weights.pop(idx)
+        
+        return selected
     
     def generate_from_template(
         self,
         template: JailbreakTemplate,
         apply_mutation: bool = True,
-        mutation_count: int = 1
+        mutation_count: int = None
     ) -> List[GeneratedPrompt]:
         """
         从单个模板生成提示词
@@ -128,23 +257,21 @@ class PromptGenerator:
                 results.append(prompt)
                 return results
             
-            # 应用变异：使用全部6种变异方法叠加
-            # 编码绕过 + 输出约束 + 符号插入 + 语序重排 + 同义词替换 + 多语言混合
-            # 所有方法同时应用：编码让AI难以识别敏感词，输出约束限制AI的防御空间
-            all_methods = list(MutationMethod)
-            for i in range(mutation_count):
-                # 每次随机打乱顺序，使叠加效果多样化
-                random.shuffle(all_methods)
+            # 应用变异：根据配置权重随机选择 1~max_combo_size 种方法组合
+            # 避免默认叠加全部6种方法导致语义严重受损
+            effective_count = mutation_count or self.mutations_per_template
+            for i in range(effective_count):
+                selected_methods = self._select_mutation_methods()
                 
                 mutation_result = self.mutation_engine.mutate_combined(
-                    rendered_content, 
-                    all_methods
+                    rendered_content,
+                    selected_methods
                 )
                 
                 if mutation_result.success:
                     applied_methods = mutation_result.metadata.get(
-                        "applied_methods", 
-                        [m.value for m in all_methods]
+                        "applied_methods",
+                        [m.value for m in selected_methods]
                     )
                     prompt = GeneratedPrompt(
                         id=self._generate_id(),
@@ -157,7 +284,7 @@ class PromptGenerator:
                             "mutation_applied": True,
                             "similarity": mutation_result.similarity,
                             "mutation_methods_used": applied_methods,
-                            "combo_size": len(all_methods),
+                            "combo_size": len(selected_methods),
                             "jailbench_primary_category": getattr(self, "_last_primary_category", "未知"),
                             "jailbench_secondary_category": getattr(self, "_last_secondary_category", "未知"),
                             "jailbench_query_index": getattr(self._last_jailbench_query, "index", -1)
@@ -204,7 +331,14 @@ class PromptGenerator:
                 apply_mutation=True,
                 mutation_count=mutations_per_template
             )
-            results.extend(prompts)
+            # 去重：同一模板多次生成可能内容相同，只保留不同内容
+            seen = set()
+            unique_prompts = []
+            for p in prompts:
+                if p.content not in seen:
+                    seen.add(p.content)
+                    unique_prompts.append(p)
+            results.extend(unique_prompts)
         
         logger.info(
             f"策略 {strategy.value} 生成了 {len(results)} 条提示词 "

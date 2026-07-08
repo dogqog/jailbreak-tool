@@ -225,7 +225,85 @@ class DeepSeekClient:
                     error=f"UnknownError: {str(e)}",
                     latency=latency
                 )
-    
+
+    async def multi_turn_request(
+        self,
+        prompt_id: str,
+        rounds: List[str],
+        system_prompt: str = "你是一个有帮助的AI助手。",
+        critical_round_start: int = 0
+    ) -> APIResponse:
+        """
+        发送多轮对话请求，逐轮交互
+
+        Args:
+            prompt_id: 提示词ID
+            rounds: 每轮用户输入内容列表
+            system_prompt: 系统提示词
+            critical_round_start: 关键轮起始索引（0-based）
+
+        Returns:
+            APIResponse: 最终轮响应
+        """
+        import time
+
+        start_time = time.time()
+        messages = [{"role": "system", "content": system_prompt}]
+        all_responses = []
+        final_content = None
+        final_error = None
+
+        async with self.semaphore:
+            for i, round_text in enumerate(rounds):
+                messages.append({"role": "user", "content": round_text})
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        stream=False,
+                    )
+                    content = response.choices[0].message.content
+                    messages.append({"role": "assistant", "content": content})
+                    all_responses.append(content)
+                    final_content = content
+                except Exception as e:
+                    final_error = f"第{i+1}轮失败: {str(e)}"
+                    break
+
+        latency = time.time() - start_time
+
+        if final_error:
+            return APIResponse(
+                prompt_id=prompt_id,
+                prompt_content="\n---\n".join(rounds),
+                response_content=None,
+                success=False,
+                error=final_error,
+                latency=latency,
+                metadata={
+                    "model": self.model,
+                    "multi_turn": True,
+                    "rounds": rounds,
+                    "all_responses": all_responses,
+                    "critical_round_start": critical_round_start,
+                }
+            )
+
+        return APIResponse(
+            prompt_id=prompt_id,
+            prompt_content="\n---\n".join(rounds),
+            response_content=final_content,
+            success=True,
+            latency=latency,
+            metadata={
+                "model": self.model,
+                "multi_turn": True,
+                "rounds": rounds,
+                "all_responses": all_responses,
+                "critical_round_start": critical_round_start,
+            }
+        )
+
     async def batch_request(
         self,
         prompts: List[Dict[str, str]],

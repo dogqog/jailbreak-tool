@@ -22,18 +22,15 @@ from .api import (
     get_deepseek_client
 )
 from .evaluator import (
-    KeywordChecker,
     SemanticAnalyzer,
-    JailbreakJudge,
+    EvalResult,
     ReportGenerator,
-    get_keyword_checker,
     get_semantic_analyzer,
-    get_jailbreak_judge,
-    get_report_generator
+    get_report_generator,
 )
 
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "竞赛团队"
 
 
@@ -41,32 +38,29 @@ __all__ = [
     # 版本信息
     "__version__",
     "__author__",
-    
+
     # 模板相关
     "JailbreakStrategy",
     "JailbreakTemplate",
     "TemplateManager",
     "get_template_manager",
-    
+
     # 变异和生成相关
     "MutationMethod",
     "MutationEngine",
     "PromptGenerator",
     "get_mutation_engine",
     "get_prompt_generator",
-    
+
     # API相关
     "DeepSeekClient",
     "AsyncHandler",
     "get_deepseek_client",
-    
+
     # 评估相关
-    "KeywordChecker",
     "SemanticAnalyzer",
-    "JailbreakJudge",
+    "EvalResult",
     "ReportGenerator",
-    "get_keyword_checker",
     "get_semantic_analyzer",
-    "get_jailbreak_judge",
     "get_report_generator",
 ]

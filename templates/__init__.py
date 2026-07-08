@@ -2,6 +2,7 @@
 越狱模板库包
 
 提供所有越狱策略模板的统一访问接口。
+模板定义已迁移至独立的 JSON 模板库文件（templates_library/）。
 """
 from templates.base import (
     JailbreakStrategy,
@@ -10,11 +11,6 @@ from templates.base import (
     validate_template
 )
 from templates.manager import TemplateManager, get_template_manager
-from templates.role_play import RolePlayTemplateProvider
-from templates.scenario import ScenarioTemplateProvider
-from templates.constraint import ConstraintTemplateProvider
-from templates.translation import TranslationTemplateProvider
-from templates.multi_turn import MultiTurnTemplateProvider
 
 
 # 导出主要接口
@@ -24,27 +20,31 @@ __all__ = [
     "JailbreakTemplate",
     "BaseTemplateProvider",
     "validate_template",
-    
+
     # 管理器
     "TemplateManager",
     "get_template_manager",
-    
-    # 具体策略提供者
-    "RolePlayTemplateProvider",
-    "ScenarioTemplateProvider",
-    "ConstraintTemplateProvider",
-    "TranslationTemplateProvider",
-    "MultiTurnTemplateProvider",
 ]
 
 
-# 模板库统计信息
+# 模板库统计信息（按需动态计算，避免导入时重复初始化 TemplateManager）
 TEMPLATE_COUNT = {
-    "role_play": 5,      # 角色扮演
-    "scenario": 5,       # 场景构建
-    "constraint": 5,     # 约束绕过
-    "translation": 5,    # 翻译伪装
-    "multi_turn": 5,     # 多轮诱导
+    "role_play": 7,
+    "scenario": 5,
+    "constraint": 6,
+    "translation": 5,
+    "multi_turn": 6,
 }
+TOTAL_TEMPLATES = sum(TEMPLATE_COUNT.values())  # 总计29个模板
 
-TOTAL_TEMPLATES = sum(TEMPLATE_COUNT.values())  # 总计25个模板
+# 独立模板库目录名称
+TEMPLATE_LIBRARY_DIR = "templates_library"
+
+
+def get_template_count() -> dict:
+    """动态获取各策略模板数量（优先使用实际加载结果）"""
+    try:
+        from templates.manager import get_template_manager
+        return get_template_manager().get_strategy_statistics()
+    except Exception:
+        return TEMPLATE_COUNT

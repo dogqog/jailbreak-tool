@@ -52,27 +52,29 @@ class AsyncHandler:
     async def execute_test_batch(
         self,
         prompts: List[Dict[str, str]],
-        progress_callback: Optional[Callable] = None
+        progress_callback: Optional[Callable] = None,
+        system_prompt: str = "你是一个有帮助的AI助手。"
     ) -> List[APIResponse]:
         """
         执行批量测试
-        
+
         Args:
             prompts: 提示词列表
             progress_callback: 进度回调函数
-            
+            system_prompt: 系统提示词
+
         Returns:
             List[APIResponse]: 测试结果列表
         """
         logger.info(f"开始执行批量测试，共 {len(prompts)} 条提示词")
-        
+
         # 执行批量请求
-        results = await self.client.batch_request(prompts)
-        
+        results = await self.client.batch_request(prompts, system_prompt=system_prompt)
+
         # 调用进度回调
         if progress_callback:
             progress_callback(results)
-        
+
         return results
     
     async def execute_with_retry(
