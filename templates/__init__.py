@@ -2,7 +2,7 @@
 越狱模板库包
 
 提供所有越狱策略模板的统一访问接口。
-模板定义已迁移至独立的 JSON 模板库文件（templates_library/）。
+模板定义位于 templates/all_templates.json。
 """
 from templates.base import (
     JailbreakStrategy,
@@ -37,8 +37,8 @@ TEMPLATE_COUNT = {
 }
 TOTAL_TEMPLATES = sum(TEMPLATE_COUNT.values())  # 总计29个模板
 
-# 独立模板库目录名称
-TEMPLATE_LIBRARY_DIR = "templates_library"
+# 模板库目录名称
+TEMPLATE_LIBRARY_DIR = "templates"
 
 
 def get_template_count() -> dict:

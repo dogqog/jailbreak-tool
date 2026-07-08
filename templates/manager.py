@@ -28,15 +28,15 @@ class TemplateManager:
         初始化模板管理器
         
         Args:
-            library_dir: 独立模板库目录（JSON文件），如果存在则优先加载
+            library_dir: 模板库目录（JSON文件），如果存在则优先加载
         """
         # 加载所有模板
         self.templates: Dict[str, JailbreakTemplate] = {}
 
-        # 从独立模板库文件加载
+        # 从独立模板库文件加载，默认在 templates/ 目录下
         if library_dir is None:
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            library_dir = os.path.join(project_root, "templates_library")
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            library_dir = current_dir
 
         if os.path.isdir(library_dir):
             loaded = self._load_from_library(library_dir)
@@ -217,7 +217,7 @@ class TemplateManager:
         return [t.to_dict() for t in self.templates.values()]
 
 
-# 创建全局模板管理器实例（默认从 templates_library/ 加载）
+# 创建全局模板管理器实例（默认从 templates/ 目录加载）
 template_manager = TemplateManager()
 
 

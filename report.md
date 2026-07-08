@@ -56,7 +56,7 @@ jailbreak-tool/
 
 模板使用占位符机制，从JailBench词库动态加载敏感问题内容，实现模板与内容的分离。
 
-模板定义统一维护在 **独立模板库文件** `templates_library/all_templates.json` 中，完全脱离 Python 源码，便于直接查看和修改。`TemplateManager` 初始化时仅从此 JSON 文件加载模板。
+模板定义统一维护在 `templates/all_templates.json` 中，与模板加载器同目录，便于直接查看和修改。`TemplateManager` 初始化时仅从此 JSON 文件加载模板。
 
 ### 2.2 自动化变异引擎
 
@@ -270,11 +270,10 @@ python scripts/generate_prompts.py
 
 ```
 jailbreak-tool/
-├── templates/          # 越狱模板模块
+├── templates/          # 越狱模板模块与模板库文件
 │   ├── base.py         # 基类定义（策略枚举、模板数据类）
-│   └── manager.py      # 模板管理器
-├── templates_library/  # 独立模板库
-│   └── all_templates.json  # 29个越狱模板
+│   ├── manager.py      # 模板管理器
+│   └── all_templates.json  # 29个越狱模板（JSON格式）
 ├── engine/             # 变异引擎
 │   ├── generator.py    # 提示词生成器
 │   └── mutator.py      # 6种变异方法实现
