@@ -224,6 +224,48 @@ class JailBenchLoader:
         # 否则随机选择
         return self.get_random_query()
     
+    def get_random_query_by_template_instruction(self, instruction_field: str) -> JailBenchQuery:
+        """
+        根据模板的instruction字段（敏感类型分类）随机获取一条匹配的问题
+        
+        匹配规则：
+        - instruction_field为"通用" → 从所有问题中随机选择
+        - instruction_field为具体类别（如"歧视"）→ 从该类别问题中随机选择
+        - instruction_field为多个类别（如"商业违法违规、侵犯他人合法权益"）→ 从这些类别的并集中随机选择
+        - CSV中"违反社会主义核心价值观"一级领域映射为"通用"，可被任何模板使用
+        
+        Args:
+            instruction_field: 模板的instruction字段值，如"通用"、"歧视"、"商业违法违规、侵犯他人合法权益"
+            
+        Returns:
+            JailBenchQuery: 随机选择的问题
+        """
+        if not self.queries:
+            raise ValueError("词库为空，无法获取问题")
+        
+        # 解析instruction_field，支持中文顿号、中文逗号、英文逗号分隔的多类别
+        # 先将所有分隔符统一为英文逗号
+        normalized = instruction_field.replace("、", ",").replace("，", ",")
+        categories = [c.strip() for c in normalized.split(",") if c.strip()]
+        
+        # 如果包含"通用"或为空，从所有问题中随机选择
+        if not categories or "通用" in categories:
+            return random.choice(self.queries)
+        
+        # 收集匹配类别的所有问题
+        # 注意：CSV中"违反社会主义核心价值观"映射为"通用"，可被任何模板使用
+        # 所以这里只收集instruction_field中指定的具体类别
+        matched_queries = []
+        for cat in categories:
+            if cat in self.queries_by_primary:
+                matched_queries.extend(self.queries_by_primary[cat])
+        
+        # 如果没有匹配到任何问题，回退到全部问题
+        if not matched_queries:
+            return random.choice(self.queries)
+        
+        return random.choice(matched_queries)
+    
     def get_statistics(self) -> Dict:
         """
         获取词库统计信息

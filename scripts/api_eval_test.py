@@ -113,13 +113,26 @@ async def api_call_multi_turn(client: AsyncOpenAI, rounds: list, prompt_id: str,
 def generate_prompt(template) -> str:
     """用generator渲染单个模板，并应用编码绕过变异"""
     try:
-        results = prompt_generator.generate_from_template(template, apply_mutation=False, mutation_count=1)
-        if results:
-            rendered = results[0].content
-            mutation_result = mutation_engine.mutate_single(rendered, MutationMethod.ENCODING_BYPASS)
-            if mutation_result and mutation_result.success:
-                return mutation_result.mutated
-            return rendered
+        # 获取模板的instruction字段（敏感类型分类）
+        template_instruction = template.placeholders.get("instruction", "通用")
+
+        # 根据模板的敏感类型选择对应类别的问题
+        from evaluator.jailbench_loader import get_jailbench_loader
+        jailbench = get_jailbench_loader()
+
+        # 使用新方法根据模板的敏感类型选择对应类别的问题
+        # 支持多类别（如"商业违法违规、侵犯他人合法权益"）和通用模板
+        jb_query = jailbench.get_random_query_by_template_instruction(template_instruction)
+
+        # 渲染模板
+        instruction_text = jb_query.query
+        rendered = template.render(instruction=instruction_text)
+
+        # 应用编码绕过变异
+        mutation_result = mutation_engine.mutate_single(rendered, MutationMethod.ENCODING_BYPASS)
+        if mutation_result and mutation_result.success:
+            return mutation_result.mutated
+        return rendered
     except Exception:
         pass
     vals = {}
@@ -131,9 +144,9 @@ def generate_prompt(template) -> str:
             vals[k] = f"[{desc}]"
     return template.render(**vals)
 
-def get_verdict(text: str) -> str:
+def get_verdict(text: str, category: str = None) -> str:
     """使用语义评估器判定结果类型"""
-    result = analyzer.analyze_text(text)
+    result = analyzer.analyze_text(text, category=category)
     if result.refused:
         return "refused"
     elif result.is_pseudo:
@@ -142,7 +155,7 @@ def get_verdict(text: str) -> str:
         return "success"
     return "pseudo"
 
-def get_multi_turn_verdict(result: dict) -> str:
+def get_multi_turn_verdict(result: dict, category: str = None) -> str:
     """多轮对话判定"""
     all_resp = result.get("all_responses", [])
     critical_start = result.get("critical_round_start", 0)
@@ -155,7 +168,7 @@ def get_multi_turn_verdict(result: dict) -> str:
     has_success = False
     all_pseudo = True
     for resp in critical_resp:
-        v = get_verdict(resp)
+        v = get_verdict(resp, category=category)
         if v == "success":
             has_success = True
             all_pseudo = False
@@ -171,6 +184,12 @@ def get_multi_turn_verdict(result: dict) -> str:
 async def main():
     all_templates = template_manager.get_all_templates()
     print(f"共 {len(all_templates)} 个模板")
+
+    # 构建模板ID → instruction类别映射
+    template_categories = {
+        t.id: t.placeholders.get("instruction", "通用")
+        for t in all_templates
+    }
 
     cases = []
     for t in all_templates:
@@ -221,11 +240,12 @@ async def main():
         by_strategy.setdefault(sname, {"total": 0, "refused": 0, "pseudo": 0, "success": 0})
         by_strategy[sname]["total"] += 1
 
+        cat = template_categories.get(r["id"], "通用")
         if r.get("multi_turn"):
-            verdict = get_multi_turn_verdict(r)
+            verdict = get_multi_turn_verdict(r, category=cat)
         else:
             text = r.get("text")
-            verdict = get_verdict(text) if text else "refused"
+            verdict = get_verdict(text, category=cat) if text else "refused"
         by_strategy[sname][verdict] += 1
 
     total = len(results)
@@ -252,9 +272,10 @@ async def main():
             prefix = t.id.split("_")[0]
             sname = {"rp": "角色扮演", "sc": "场景构建", "ct": "约束绕过",
                      "tr": "翻译伪装", "mt": "多轮诱导"}.get(prefix, "其他")
+            cat = template_categories.get(t.id, "通用")
 
             if r and r.get("multi_turn"):
-                verdict = get_multi_turn_verdict(r)
+                verdict = get_multi_turn_verdict(r, category=cat)
                 icon = {"refused": "❌", "pseudo": "⚠️", "success": "✅"}[verdict]
                 verdict_text = {"refused": "模型拒绝", "pseudo": "伪越狱", "success": "越狱成功"}[verdict]
 
@@ -269,7 +290,7 @@ async def main():
                 for i, (rnd, resp) in enumerate(zip(round_list, all_resp)):
                     is_critical = i >= critical_start
                     if is_critical:
-                        v = get_verdict(resp)
+                        v = get_verdict(resp, category=cat)
                         rnd_icon = {"refused": "❌", "pseudo": "⚠️", "success": "✅"}.get(v, "⚪")
                         tag = " [关键轮]"
                     else:
@@ -285,7 +306,7 @@ async def main():
 
             else:
                 resp_text = r.get("text") if r else None
-                verdict = get_verdict(resp_text) if resp_text else "refused"
+                verdict = get_verdict(resp_text, category=cat) if resp_text else "refused"
                 icon = {"refused": "❌", "pseudo": "⚠️", "success": "✅"}[verdict]
                 verdict_text = {"refused": "模型拒绝", "pseudo": "伪越狱", "success": "越狱成功"}[verdict]
 

@@ -29,13 +29,13 @@ __all__ = [
 
 # 模板库统计信息（按需动态计算，避免导入时重复初始化 TemplateManager）
 TEMPLATE_COUNT = {
-    "role_play": 7,
+    "role_play": 5,
     "scenario": 5,
     "constraint": 6,
     "translation": 5,
     "multi_turn": 6,
 }
-TOTAL_TEMPLATES = sum(TEMPLATE_COUNT.values())  # 总计29个模板
+TOTAL_TEMPLATES = sum(TEMPLATE_COUNT.values())  # 总计27个模板
 
 # 模板库目录名称
 TEMPLATE_LIBRARY_DIR = "templates"

@@ -24,7 +24,7 @@ jailbreak-tool/
 ├── templates/          # 模板模块：基类、管理器与模板库文件
 │   ├── base.py          模板基类与数据模型
 │   ├── manager.py       模板管理器（从 JSON 文件加载）
-│   └── all_templates.json  模板库文件（JSON格式，共29个模板）
+│   └── all_templates.json  模板库文件（JSON格式，共27个模板）
 ├── engine/             # 引擎模块：变异与生成
 │   ├── generator.py     提示词生成器
 │   └── mutator.py       变异引擎（6种变异方法）
@@ -72,7 +72,7 @@ jailbreak-tool/
 
 - **`base.py`**：定义 `JailbreakTemplate`（模板数据类）、`JailbreakStrategy`（策略枚举）、`BaseTemplateProvider`（模板提供者基类）、`validate_template()`（模板校验函数）
 - **`manager.py`**：`TemplateManager` 从 `templates/all_templates.json` 加载所有模板，通过 `get_template_manager()` 获取单例
-- **`templates/all_templates.json`**：JSON 模板库，包含 5 种策略共 29 个模板
+- **`templates/all_templates.json`**：JSON 模板库，包含 5 种策略共 27 个模板
 
 ### 模板结构
 

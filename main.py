@@ -209,7 +209,16 @@ class JailbreakTestSystem:
 
         return responses
     
-    def _evaluate_multi_turn(self, response: APIResponse) -> EvalResult:
+    def _get_category_by_template_id(self, template_id: str) -> str:
+        """根据模板ID获取instruction类别"""
+        if not template_id:
+            return "通用"
+        template = self.template_manager.get_template_by_id(template_id)
+        if template:
+            return template.placeholders.get("instruction", "通用")
+        return "通用"
+
+    def _evaluate_multi_turn(self, response: APIResponse, category: str = None) -> EvalResult:
         """
         对多轮对话响应进行综合评估
 
@@ -222,7 +231,7 @@ class JailbreakTestSystem:
 
         if not all_responses:
             text = response.response_content or ""
-            return self.semantic_analyzer.analyze_text(text)
+            return self.semantic_analyzer.analyze_text(text, category=category)
 
         critical_resp = all_responses[critical_start:]
         if not critical_resp:
@@ -231,10 +240,10 @@ class JailbreakTestSystem:
         has_success = False
         all_pseudo = True
         combined_text = "\n".join(critical_resp)
-        result = self.semantic_analyzer.analyze_text(combined_text)
+        result = self.semantic_analyzer.analyze_text(combined_text, category=category)
 
         for resp in critical_resp:
-            r = self.semantic_analyzer.analyze_text(resp)
+            r = self.semantic_analyzer.analyze_text(resp, category=category)
             if r.is_jailbreak_success:
                 has_success = True
                 all_pseudo = False
@@ -288,11 +297,16 @@ class JailbreakTestSystem:
             prompt = prompt_map.get(response.prompt_id)
             is_multi_turn = response.metadata and response.metadata.get("multi_turn", False)
 
+            # 获取模板的instruction类别
+            category = "通用"
+            if prompt:
+                category = self._get_category_by_template_id(prompt.template_id)
+
             if is_multi_turn:
-                result = self._evaluate_multi_turn(response)
+                result = self._evaluate_multi_turn(response, category=category)
             else:
                 text = response.response_content or ""
-                result = self.semantic_analyzer.analyze_text(text)
+                result = self.semantic_analyzer.analyze_text(text, category=category)
 
             # 附加元数据
             if prompt:

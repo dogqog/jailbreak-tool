@@ -471,8 +471,9 @@ class PromptGenerator:
             Dict[str, str]: 占位符值字典
             
         Note:
-            新逻辑：选择模板 → 从JailBench中选择句子组合 → 进行变异
+            新逻辑：选择模板 → 根据模板instruction字段选择对应类别 → 从JailBench中选择句子 → 进行变异
             JailBench_seed.csv中的query已经是完整的可用句式，不需要再填充关键词
+            模板的instruction字段标注该模板适用的敏感类型（歧视/侵犯他人合法权益/无法满足特定服务类型的安全需求/商业违法违规/通用）
         """
         # 导入JailBench加载器
         from evaluator.jailbench_loader import get_jailbench_loader
@@ -482,10 +483,14 @@ class PromptGenerator:
         
         for key, desc in placeholders.items():
             if key == "instruction":
-                # ========== 新逻辑：直接从JailBench选择完整的敏感问题 ==========
+                # ========== 新逻辑：根据模板instruction字段选择对应类别的敏感问题 ==========
                 
-                # 随机获取一条完整的敏感问题
-                jb_query = jailbench.get_random_query()
+                # 获取模板的instruction字段（敏感类型分类）
+                template_instruction = template.placeholders.get("instruction", "通用")
+                
+                # 使用新方法根据模板的敏感类型选择对应类别的问题
+                # 支持多类别（如"商业违法违规、侵犯他人合法权益"）和通用模板
+                jb_query = jailbench.get_random_query_by_template_instruction(template_instruction)
                 
                 # 直接使用完整的问题内容
                 instruction_text = jb_query.query
