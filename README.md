@@ -24,7 +24,7 @@ jailbreak-tool/
 ├── templates/          # 模板模块：基类、管理器与模板库文件
 │   ├── base.py          模板基类与数据模型
 │   ├── manager.py       模板管理器（从 JSON 文件加载）
-│   └── all_templates.json  模板库文件（JSON格式，共27个模板）
+│   └── all_templates.json  模板库文件（JSON格式，共25个模板）
 ├── engine/             # 引擎模块：变异与生成
 │   ├── generator.py     提示词生成器
 │   └── mutator.py       变异引擎（6种变异方法）
@@ -62,17 +62,17 @@ jailbreak-tool/
 
 | 策略 | 枚举值 | 说明 | 模板数量 |
 |------|--------|------|----------|
-| 角色扮演 | `ROLE_PLAY` | 通过扮演特定角色（作家、研究员等）绕过大模型的安全限制 | 7个 |
+| 角色扮演 | `ROLE_PLAY` | 通过扮演特定角色（作家、研究员等）绕过大模型的安全限制 | 5个 |
 | 场景构建 | `SCENARIO` | 构建虚构场景（未来世界、纸上推演等）让模型放下戒备 | 5个 |
-| 约束绕过 | `CONSTRAINT` | 通过系统功能测试、系统权限设定等方式绕过约束 | 6个 |
+| 约束绕过 | `CONSTRAINT` | 通过系统功能测试、系统权限设定等方式绕过约束 | 5个 |
 | 翻译伪装 | `TRANSLATION` | 以翻译任务为伪装，请求敏感内容的翻译输出 | 5个 |
-| 多轮诱导 | `MULTI_TURN` | 多轮对话中逐步铺垫，在关键轮插入敏感词 | 6个 |
+| 多轮诱导 | `MULTI_TURN` | 多轮对话中逐步铺垫，在关键轮插入敏感词 | 5个 |
 
 ### 关键文件
 
 - **`base.py`**：定义 `JailbreakTemplate`（模板数据类）、`JailbreakStrategy`（策略枚举）、`BaseTemplateProvider`（模板提供者基类）、`validate_template()`（模板校验函数）
 - **`manager.py`**：`TemplateManager` 从 `templates/all_templates.json` 加载所有模板，通过 `get_template_manager()` 获取单例
-- **`templates/all_templates.json`**：JSON 模板库，包含 5 种策略共 27 个模板
+- **`templates/all_templates.json`**：JSON 模板库，包含 5 种策略共 25 个模板
 
 ### 模板结构
 
@@ -247,8 +247,8 @@ python main.py --api-key "sk-your-key"
 
 ```
 output/reports/
-├── jailbreak_report_20260707_232957.json  # JSON格式结构化报告
-├── jailbreak_report_20260707_232957.md    # Markdown格式可读报告
+├── jailbreak_report_20260711_224942.json  # JSON格式结构化报告
+├── jailbreak_report_20260711_224942.md    # Markdown格式可读报告
 └── api_eval_report_20260620_155203.md     # 逐模板测试报告（api_eval_test.py）
 ```
 
