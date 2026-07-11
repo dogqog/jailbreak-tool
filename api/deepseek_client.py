@@ -102,6 +102,115 @@ class DeepSeekClient:
         
         logger.info(f"DeepSeek客户端初始化完成 - 模型: {model}, 最大并发: {max_concurrent}")
     
+    async def _execute_request(
+        self,
+        prompt_id: str,
+        prompt_content: str,
+        system_prompt: str
+    ) -> APIResponse:
+        """
+        内部方法：实际执行单个API请求（不带信号量，供重试逻辑复用）
+        """
+        import time
+        start_time = time.time()
+        
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt_content},
+            ],
+            stream=False,
+        )
+        
+        latency = time.time() - start_time
+        response_content = response.choices[0].message.content
+        
+        logger.debug(f"请求成功 - ID: {prompt_id}, 延迟: {latency:.2f}s")
+        
+        return APIResponse(
+            prompt_id=prompt_id,
+            prompt_content=prompt_content,
+            response_content=response_content,
+            success=True,
+            latency=latency,
+            metadata={"model": self.model}
+        )
+
+    async def _single_request_with_retry(
+        self,
+        prompt_id: str,
+        prompt_content: str,
+        system_prompt: str = "你是一个有帮助的AI助手。",
+        retry_count: int = 0
+    ) -> APIResponse:
+        """
+        内部方法：带重试逻辑的请求（不带信号量，避免重试时死锁）
+        """
+        import time
+        start_time = time.time()
+        
+        try:
+            return await self._execute_request(prompt_id, prompt_content, system_prompt)
+        except RateLimitError as e:
+            if retry_count < self.max_retry:
+                wait_time = 2 ** retry_count
+                logger.warning(f"速率限制，等待 {wait_time}s 后重试 - ID: {prompt_id}")
+                await asyncio.sleep(wait_time)
+                return await self._single_request_with_retry(
+                    prompt_id, prompt_content, system_prompt, retry_count + 1
+                )
+            latency = time.time() - start_time
+            logger.error(f"速率限制重试失败 - ID: {prompt_id}")
+            return APIResponse(
+                prompt_id=prompt_id,
+                prompt_content=prompt_content,
+                response_content=None,
+                success=False,
+                error=f"RateLimitError: {str(e)}",
+                latency=latency
+            )
+        except APIConnectionError as e:
+            if retry_count < self.max_retry:
+                wait_time = 2 ** retry_count
+                logger.warning(f"连接错误，等待 {wait_time}s 后重试 - ID: {prompt_id}")
+                await asyncio.sleep(wait_time)
+                return await self._single_request_with_retry(
+                    prompt_id, prompt_content, system_prompt, retry_count + 1
+                )
+            latency = time.time() - start_time
+            logger.error(f"连接错误重试失败 - ID: {prompt_id}")
+            return APIResponse(
+                prompt_id=prompt_id,
+                prompt_content=prompt_content,
+                response_content=None,
+                success=False,
+                error=f"APIConnectionError: {str(e)}",
+                latency=latency
+            )
+        except APIError as e:
+            latency = time.time() - start_time
+            logger.error(f"API错误 - ID: {prompt_id}, 错误: {str(e)}")
+            return APIResponse(
+                prompt_id=prompt_id,
+                prompt_content=prompt_content,
+                response_content=None,
+                success=False,
+                error=f"APIError: {str(e)}",
+                latency=latency
+            )
+        except Exception as e:
+            latency = time.time() - start_time
+            logger.error(f"未知错误 - ID: {prompt_id}, 错误: {str(e)}")
+            return APIResponse(
+                prompt_id=prompt_id,
+                prompt_content=prompt_content,
+                response_content=None,
+                success=False,
+                error=f"UnknownError: {str(e)}",
+                latency=latency
+            )
+
     async def single_request(
         self,
         prompt_id: str,
@@ -110,13 +219,13 @@ class DeepSeekClient:
         retry_count: int = 0
     ) -> APIResponse:
         """
-        发送单条请求
+        发送单条请求（带信号量控制并发）
         
         Args:
             prompt_id: 提示词ID
             prompt_content: 提示词内容
             system_prompt: 系统提示词
-            retry_count: 当前重试次数
+            retry_count: 当前重试次数（仅供内部递归使用）
             
         Returns:
             APIResponse: API响应
@@ -126,105 +235,9 @@ class DeepSeekClient:
         start_time = time.time()
         
         async with self.semaphore:
-            try:
-                # 发送请求
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt_content},
-                    ],
-                    stream=False,
-                )
-                
-                # 计算延迟
-                latency = time.time() - start_time
-                
-                # 提取响应内容
-                response_content = response.choices[0].message.content
-                
-                logger.debug(f"请求成功 - ID: {prompt_id}, 延迟: {latency:.2f}s")
-                
-                return APIResponse(
-                    prompt_id=prompt_id,
-                    prompt_content=prompt_content,
-                    response_content=response_content,
-                    success=True,
-                    latency=latency,
-                    metadata={"model": self.model}
-                )
-                
-            except RateLimitError as e:
-                # 速率限制错误，自动重试
-                if retry_count < self.max_retry:
-                    wait_time = 2 ** retry_count  # 指数退避
-                    logger.warning(f"速率限制，等待 {wait_time}s 后重试 - ID: {prompt_id}")
-                    await asyncio.sleep(wait_time)
-                    return await self.single_request(
-                        prompt_id, prompt_content, system_prompt, retry_count + 1
-                    )
-                
-                latency = time.time() - start_time
-                logger.error(f"速率限制重试失败 - ID: {prompt_id}")
-                
-                return APIResponse(
-                    prompt_id=prompt_id,
-                    prompt_content=prompt_content,
-                    response_content=None,
-                    success=False,
-                    error=f"RateLimitError: {str(e)}",
-                    latency=latency
-                )
-                
-            except APIConnectionError as e:
-                # 连接错误，自动重试
-                if retry_count < self.max_retry:
-                    wait_time = 2 ** retry_count
-                    logger.warning(f"连接错误，等待 {wait_time}s 后重试 - ID: {prompt_id}")
-                    await asyncio.sleep(wait_time)
-                    return await self.single_request(
-                        prompt_id, prompt_content, system_prompt, retry_count + 1
-                    )
-                
-                latency = time.time() - start_time
-                logger.error(f"连接错误重试失败 - ID: {prompt_id}")
-                
-                return APIResponse(
-                    prompt_id=prompt_id,
-                    prompt_content=prompt_content,
-                    response_content=None,
-                    success=False,
-                    error=f"APIConnectionError: {str(e)}",
-                    latency=latency
-                )
-                
-            except APIError as e:
-                # 其他API错误
-                latency = time.time() - start_time
-                logger.error(f"API错误 - ID: {prompt_id}, 错误: {str(e)}")
-                
-                return APIResponse(
-                    prompt_id=prompt_id,
-                    prompt_content=prompt_content,
-                    response_content=None,
-                    success=False,
-                    error=f"APIError: {str(e)}",
-                    latency=latency
-                )
-                
-            except Exception as e:
-                # 其他未知错误
-                latency = time.time() - start_time
-                logger.error(f"未知错误 - ID: {prompt_id}, 错误: {str(e)}")
-                
-                return APIResponse(
-                    prompt_id=prompt_id,
-                    prompt_content=prompt_content,
-                    response_content=None,
-                    success=False,
-                    error=f"UnknownError: {str(e)}",
-                    latency=latency
-                )
+            return await self._single_request_with_retry(
+                prompt_id, prompt_content, system_prompt, retry_count
+            )
 
     async def multi_turn_request(
         self,
@@ -349,6 +362,19 @@ class DeepSeekClient:
         
         return results
     
+    async def close(self):
+        """
+        关闭客户端连接并重置全局实例
+        
+        关闭底层 AsyncOpenAI 客户端，并将全局单例 _global_client 置为 None，
+        确保下次调用 get_deepseek_client() 时能够重新创建新的客户端。
+        """
+        global _global_client
+        if self.client:
+            await self.client.close()
+        _global_client = None
+        logger.info("DeepSeek客户端已关闭")
+
     def get_client_info(self) -> Dict:
         """
         获取客户端信息

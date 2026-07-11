@@ -401,8 +401,8 @@ class JailbreakTestSystem:
         report = self.generate_report(prompts, responses, eval_results)
 
         # 6. 关闭 API 客户端，避免 Windows 下 event loop 关闭警告
-        if self.client and self.client.client:
-            await self.client.client.close()
+        if self.client:
+            await self.client.close()
 
         logger.info("完整测试流程结束")
 
